@@ -2,46 +2,16 @@
 functionality of the spaceman utility
 """
 
-import os
 import sys
 import argparse
-import importlib
+
+from .discovery import find_deployments
 
 def list_deployments(args):
     """
         handler for ``list`` subcommand
     """
-    # Find .spaceman directories
-    spaceman_dirs = []
-    for root, dirs, files in os.walk('.'):
-        if '.spaceman' in dirs:
-            spaceman_dirs.append(os.path.join(root, '.spaceman'))
-
-    found_deployments = []
-    for spaceman_dir in spaceman_dirs:
-        for root, dirs, files in os.walk(spaceman_dir):
-            for fname in files:
-                if fname.endswith(".py"):
-                    filepath = os.path.join(root, fname)
-                    module = importlib.machinery.SourceFileLoader(
-                        'module',
-                        filepath,
-
-                    ).load_module()
-
-                    if hasattr(module, 'SPACEMAN_DEPLOYMENTS'):
-                        for deployment in module.SPACEMAN_DEPLOYMENTS:
-                            if hasattr(deployment, 'NAME'):
-                                found_deployments.append(deployment)
-
-                            else:
-                                print(
-                                    "File %s deployment %s lacks NAME field" % (
-                                        filepath,
-                                        deployment.__name__,
-                                    ),
-                                    file=sys.stderr,
-                                )
+    found_deployments = find_deployments()
 
     if not found_deployments:
         print("Found nothing!")
@@ -50,6 +20,24 @@ def list_deployments(args):
         print(deployment.NAME)
 
     return 0
+
+def run_deployment(args):
+    """
+        handler for ``run`` subcommand
+    """
+    found_deployments = find_deployments(args.name)
+    if not found_deployments:
+        print("Deployment", args.name, "not found!", file=sys.stderr)
+        return -1
+
+    if len(found_deployments) > 1:
+        print(
+            "Found multiple deployments with name %s." % args.name,
+            file=sys.stderr,
+        )
+        return -1
+
+    return found_deployments[0]().run()
 
 def main(argv):
     """ main function """
@@ -61,6 +49,12 @@ def main(argv):
 
     parser_list = subparser.add_parser('list', help='list available deployments')
     parser_list.set_defaults(func=list_deployments)
+
+    parser_run = subparser.add_parser('run', help='run given deployment')
+    parser_run.add_argument(
+        'name', help='name of deployment to run',
+    )
+    parser_run.set_defaults(func=run_deployment)
 
     args = parser.parse_args(argv)
     if not hasattr(args, 'func'):
